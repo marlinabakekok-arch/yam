@@ -16,7 +16,6 @@ export default async function Home() {
   } catch (error) {
     console.error('Error fetching classes:', error)
   }
-  })
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-slate-50 dark:from-slate-950 dark:to-slate-900">
