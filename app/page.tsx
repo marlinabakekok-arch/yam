@@ -4,10 +4,18 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { prisma } from '@/lib/prisma'
 
+export const dynamic = 'force-dynamic'
+
 export default async function Home() {
-  const classes = await prisma.kelas.findMany({
-    orderBy: { createdAt: 'desc' },
-    take: 6,
+  let classes = []
+  try {
+    classes = await prisma.kelas.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 6,
+    })
+  } catch (error) {
+    console.error('Error fetching classes:', error)
+  }
   })
 
   return (
