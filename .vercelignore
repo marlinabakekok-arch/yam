@@ -1,0 +1,9 @@
+.git
+.gitignore
+README.md
+SETUP.md
+.env.example
+scripts/
+node_modules/
+.next/
+*.log
