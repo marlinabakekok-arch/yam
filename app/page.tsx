@@ -8,13 +8,16 @@ export const dynamic = 'force-dynamic'
 
 export default async function Home() {
   let classes = []
+  let dbError = false
+  
   try {
     classes = await prisma.kelas.findMany({
       orderBy: { createdAt: 'desc' },
       take: 6,
     })
   } catch (error) {
-    console.error('Error fetching classes:', error)
+    console.error('[v0] Error fetching classes:', error)
+    dbError = true
   }
 
   return (
@@ -49,7 +52,11 @@ export default async function Home() {
 
         {classes.length === 0 ? (
           <div className="rounded-lg border border-slate-200 bg-white p-12 text-center dark:border-slate-800 dark:bg-slate-950">
-            <p className="text-slate-600 dark:text-slate-400">No classes available yet. Check back soon!</p>
+            <p className="text-slate-600 dark:text-slate-400">
+              {dbError 
+                ? 'Database connection unavailable. Check your DATABASE_URL environment variable.' 
+                : 'No classes available yet. Check back soon!'}
+            </p>
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
