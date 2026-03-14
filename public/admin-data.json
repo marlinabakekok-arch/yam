@@ -1,0 +1,104 @@
+{
+  "stats": {
+    "totalUsers": 45,
+    "totalRevenue": 2500000,
+    "totalClasses": 8,
+    "totalTransactions": 67
+  },
+  "classes": [
+    {
+      "id": "1",
+      "title": "Web Development Basics",
+      "slug": "web-dev-basics",
+      "description": "Learn HTML, CSS, and JavaScript fundamentals",
+      "price": 99000,
+      "thumbnail": "https://via.placeholder.com/300x200",
+      "groupLink": "https://t.me/webdev",
+      "students": 12,
+      "revenue": 1188000,
+      "createdAt": "2026-01-15"
+    },
+    {
+      "id": "2",
+      "title": "React Advanced",
+      "slug": "react-advanced",
+      "description": "Master React hooks, context, and performance",
+      "price": 199000,
+      "thumbnail": "https://via.placeholder.com/300x200",
+      "groupLink": "https://t.me/react",
+      "students": 8,
+      "revenue": 1592000,
+      "createdAt": "2026-02-01"
+    },
+    {
+      "id": "3",
+      "title": "UI/UX Design",
+      "slug": "uiux-design",
+      "description": "Master Figma and design principles",
+      "price": 149000,
+      "thumbnail": "https://via.placeholder.com/300x200",
+      "groupLink": "https://t.me/design",
+      "students": 15,
+      "revenue": 2235000,
+      "createdAt": "2026-01-20"
+    }
+  ],
+  "users": [
+    {
+      "id": "user1",
+      "name": "John Doe",
+      "email": "john@example.com",
+      "role": "user",
+      "joinDate": "2026-02-15",
+      "purchases": 2,
+      "totalSpent": 298000
+    },
+    {
+      "id": "user2",
+      "name": "Jane Smith",
+      "email": "jane@example.com",
+      "role": "user",
+      "joinDate": "2026-02-10",
+      "purchases": 1,
+      "totalSpent": 199000
+    },
+    {
+      "id": "user3",
+      "name": "Admin User",
+      "email": "admin@example.com",
+      "role": "admin",
+      "joinDate": "2026-01-01",
+      "purchases": 0,
+      "totalSpent": 0
+    }
+  ],
+  "transactions": [
+    {
+      "id": "tx1",
+      "txId": "TXN20260312001",
+      "userEmail": "john@example.com",
+      "className": "Web Development Basics",
+      "amount": 99000,
+      "status": "paid",
+      "paidDate": "2026-03-10"
+    },
+    {
+      "id": "tx2",
+      "txId": "TXN20260312002",
+      "userEmail": "jane@example.com",
+      "className": "React Advanced",
+      "amount": 199000,
+      "status": "paid",
+      "paidDate": "2026-03-09"
+    },
+    {
+      "id": "tx3",
+      "txId": "TXN20260311001",
+      "userEmail": "john@example.com",
+      "className": "UI/UX Design",
+      "amount": 149000,
+      "status": "paid",
+      "paidDate": "2026-03-08"
+    }
+  ]
+}
