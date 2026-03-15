@@ -10,7 +10,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Spinner } from '@/components/ui/spinner'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Users, BookOpen, DollarSign, TrendingUp, Trash2, X } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Users, BookOpen, DollarSign, TrendingUp, Trash2, X, Edit } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
 interface Analytics {
@@ -57,6 +58,8 @@ const fetcher = (url: string) => fetch(url).then(r => r.json())
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState('overview')
   const [isCreating, setIsCreating] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editingClassId, setEditingClassId] = useState<string | null>(null)
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null)
   const [thumbnailPreview, setThumbnailPreview] = useState<string>('')
   const [formData, setFormData] = useState({
@@ -169,10 +172,87 @@ export default function AdminPage() {
       if (res.ok) {
         mutateClasses()
         alert('Class deleted!')
+      } else {
+        const error = await res.json()
+        alert(`Error: ${error.error}`)
       }
     } catch (error) {
-      alert('Error')
+      alert(`Error deleting class: ${error}`)
     }
+  }
+
+  const handleEditClass = (kelas: Kelas) => {
+    setEditingClassId(kelas.id)
+    setFormData({
+      title: kelas.title,
+      slug: kelas.slug,
+      description: kelas.description,
+      price: kelas.price.toString(),
+      groupLink: kelas.groupLink || '',
+    })
+    setThumbnailPreview(kelas.thumbnail || '')
+  }
+
+  const handleUpdateClass = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!formData.title || !formData.slug || !formData.price || !editingClassId) {
+      alert('Please fill all required fields')
+      return
+    }
+
+    setIsEditing(true)
+    try {
+      let thumbnailUrl = thumbnailPreview
+
+      // Upload new thumbnail if selected
+      if (thumbnailFile) {
+        const uploadFormData = new FormData()
+        uploadFormData.append('file', thumbnailFile)
+
+        const uploadRes = await fetch('/api/upload', {
+          method: 'POST',
+          body: uploadFormData,
+        })
+
+        if (uploadRes.ok) {
+          const uploadData = await uploadRes.json()
+          thumbnailUrl = uploadData.url
+        } else {
+          throw new Error('Failed to upload thumbnail')
+        }
+      }
+
+      const res = await fetch(`/api/admin/classes/${editingClassId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...formData,
+          price: parseInt(formData.price),
+          thumbnail: thumbnailUrl || null,
+        }),
+      })
+
+      if (res.ok) {
+        setFormData({ title: '', slug: '', description: '', price: '', groupLink: '' })
+        clearThumbnail()
+        setEditingClassId(null)
+        mutateClasses()
+        alert('Class updated!')
+      } else {
+        const error = await res.json()
+        alert(`Error: ${error.error}`)
+      }
+    } catch (error) {
+      alert(`Error updating class: ${error}`)
+    } finally {
+      setIsEditing(false)
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setEditingClassId(null)
+    setFormData({ title: '', slug: '', description: '', price: '', groupLink: '' })
+    clearThumbnail()
   }
 
   const getStatusBadge = (status: string) => {
@@ -277,10 +357,10 @@ export default function AdminPage() {
         <TabsContent value="classes" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Add Class</CardTitle>
+              <CardTitle>{editingClassId ? 'Edit Class' : 'Add Class'}</CardTitle>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleAddClass} className="space-y-4">
+              <form onSubmit={editingClassId ? handleUpdateClass : handleAddClass} className="space-y-4">
                 <div className="grid gap-4 md:grid-cols-2">
                   <Input
                     placeholder="Title *"
@@ -339,9 +419,16 @@ export default function AdminPage() {
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   required
                 />
-                <Button type="submit" disabled={isCreating}>
-                  {isCreating ? 'Adding...' : 'Add Class'}
-                </Button>
+                <div className="flex gap-2">
+                  <Button type="submit" disabled={isCreating || isEditing}>
+                    {isCreating || isEditing ? 'Processing...' : editingClassId ? 'Update Class' : 'Add Class'}
+                  </Button>
+                  {editingClassId && (
+                    <Button type="button" variant="outline" onClick={handleCancelEdit}>
+                      Cancel
+                    </Button>
+                  )}
+                </div>
               </form>
             </CardContent>
           </Card>
@@ -371,7 +458,14 @@ export default function AdminPage() {
                         <TableCell>Rp {cls.price.toLocaleString('id-ID')}</TableCell>
                         <TableCell>{cls._count.transactions}</TableCell>
                         <TableCell>{new Date(cls.createdAt).toLocaleDateString('id-ID')}</TableCell>
-                        <TableCell>
+                        <TableCell className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEditClass(cls)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
                           <Button
                             variant="destructive"
                             size="sm"
