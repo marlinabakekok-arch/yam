@@ -19,29 +19,34 @@ export async function GET() {
       return NextResponse.json([])
     }
 
-    const enrollments = await prisma.transaction.findMany({
+    // Get all products the user has purchased
+    const purchasedProducts = await prisma.orderItem.findMany({
       where: {
-        userId: user.id,
-        status: 'success',
-      },
-      include: {
-        kelas: {
-          select: {
-            id: true,
-            title: true,
-            slug: true,
-          },
+        order: {
+          userId: user.id,
+          status: 'paid',
         },
       },
-      orderBy: { paidAt: 'desc' },
+      include: {
+        product: true,
+      },
+      distinct: ['productId'],
+      orderBy: { createdAt: 'desc' },
     })
 
-    return NextResponse.json(enrollments)
+    return NextResponse.json(
+      purchasedProducts.map((item) => ({
+        id: item.product.id,
+        product: item.product,
+        purchaseDate: item.createdAt,
+      }))
+    )
   } catch (error) {
-    console.error('[v0] Error fetching enrollments:', error)
+    console.error('[Dashboard] Error fetching purchases:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
     )
   }
 }
+

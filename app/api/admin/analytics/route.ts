@@ -23,17 +23,31 @@ export async function GET() {
     // Get total users
     const totalUsers = await prisma.user.count()
 
-    // Get total classes
-    const totalClasses = await prisma.kelas.count()
+    // Get total products
+    const totalProducts = await prisma.product.count()
 
-    // Get total transactions
-    const totalTransactions = await prisma.transaction.count({
-      where: { status: 'success' },
+    // Get total orders (only paid, exclude expired)
+    const now = new Date()
+    const totalOrders = await prisma.order.count({
+      where: { 
+        status: 'paid',
+        // Exclude if expiredAt has passed
+        OR: [
+          { expiredAt: null },
+          { expiredAt: { gt: now } }
+        ]
+      },
     })
 
-    // Get total revenue
-    const revenueResult = await prisma.transaction.aggregate({
-      where: { status: 'success' },
+    // Get total revenue (only paid, exclude expired)
+    const revenueResult = await prisma.order.aggregate({
+      where: { 
+        status: 'paid',
+        OR: [
+          { expiredAt: null },
+          { expiredAt: { gt: now } }
+        ]
+      },
       _sum: { amount: true },
     })
 
@@ -45,12 +59,17 @@ export async function GET() {
     const sixMonthsAgo = new Date()
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
 
-    const monthlyTransactions = await prisma.transaction.findMany({
+    const monthlyOrders = await prisma.order.findMany({
       where: {
-        status: 'success',
+        status: 'paid',
         paidAt: {
           gte: sixMonthsAgo,
         },
+        // Exclude expired orders
+        OR: [
+          { expiredAt: null },
+          { expiredAt: { gt: now } }
+        ]
       },
       select: {
         paidAt: true,
@@ -60,17 +79,33 @@ export async function GET() {
 
     // Group by month
     const monthlyRevenue: Record<string, number> = {}
-    monthlyTransactions.forEach((tx) => {
-      if (tx.paidAt) {
-        const date = new Date(tx.paidAt)
+    monthlyOrders.forEach((order) => {
+      if (order.paidAt) {
+        const date = new Date(order.paidAt)
         const monthKey = date.toLocaleDateString('id-ID', {
           month: 'short',
           year: 'numeric',
         })
         monthlyRevenue[monthKey] =
-          (monthlyRevenue[monthKey] || 0) + parseInt(tx.amount)
+          (monthlyRevenue[monthKey] || 0) + parseInt(order.amount)
       }
     })
+
+    // Get total products sold (only from paid orders)
+    const itemsSoldResult = await prisma.orderItem.aggregate({
+      where: {
+        order: {
+          status: 'paid',
+          // Exclude expired orders
+          OR: [
+            { expiredAt: null },
+            { expiredAt: { gt: now } }
+          ]
+        }
+      },
+      _sum: { quantity: true },
+    })
+    const totalProductsSold = itemsSoldResult._sum.quantity || 0
 
     // Convert to array format for chart
     const monthlyRevenueArray = Object.entries(monthlyRevenue)
@@ -87,9 +122,10 @@ export async function GET() {
 
     return NextResponse.json({
       totalUsers,
-      totalClasses,
+      totalProducts,
       totalRevenue,
-      totalTransactions,
+      totalOrders,
+      totalProductsSold,
       monthlyRevenue: monthlyRevenueArray,
     })
   } catch (error) {

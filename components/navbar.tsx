@@ -5,31 +5,54 @@ import { useRouter } from 'next/navigation'
 import { useUser, useClerk } from '@clerk/nextjs'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet'
-import { Menu, Moon, Sun, LogOut } from 'lucide-react'
+import { Menu, Moon, Sun, LogOut, ShoppingCart, Bell } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useEffect, useState } from 'react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { useCart } from '@/lib/cart'
+import { useNotifications } from '@/lib/notifications'
+import { Badge } from '@/components/ui/badge'
 
 export function Navbar() {
   const router = useRouter()
   const { user, isSignedIn } = useUser()
   const { signOut } = useClerk()
   const { theme, setTheme } = useTheme()
+  const { getTotalItems } = useCart()
+  const { unreadCount, setNotifications } = useNotifications()
   const [mounted, setMounted] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
   const [loadingRole, setLoadingRole] = useState(true)
+  const [cartCount, setCartCount] = useState(0)
+  const [unreadNotifications, setUnreadNotifications] = useState(0)
 
   useEffect(() => {
     setMounted(true)
   }, [])
 
   useEffect(() => {
+    setCartCount(getTotalItems())
+  }, [getTotalItems])
+
+  useEffect(() => {
     if (isSignedIn && user?.id) {
       fetchRole()
+      fetchNotifications()
     } else {
       setLoadingRole(false)
     }
   }, [isSignedIn, user?.id])
+
+  // Poll notifications every 10 seconds
+  useEffect(() => {
+    if (!isSignedIn) return
+
+    const interval = setInterval(() => {
+      fetchNotifications()
+    }, 10000)
+
+    return () => clearInterval(interval)
+  }, [isSignedIn])
 
   const fetchRole = async () => {
     try {
@@ -40,6 +63,20 @@ export function Navbar() {
       setIsAdmin(false)
     } finally {
       setLoadingRole(false)
+    }
+  }
+
+  const fetchNotifications = async () => {
+    try {
+      const res = await fetch('/api/notifications')
+      if (res.ok) {
+        const data = await res.json()
+        setNotifications(data)
+        const unread = data.filter((n: any) => !n.isRead).length
+        setUnreadNotifications(unread)
+      }
+    } catch (error) {
+      console.error('Failed to fetch notifications:', error)
     }
   }
 
@@ -75,6 +112,32 @@ export function Navbar() {
 
           {/* Right Side */}
           <div className="flex items-center gap-4">
+            {/* Shopping Cart */}
+            <Link href="/cart" className="relative">
+              <Button variant="ghost" size="icon">
+                <ShoppingCart className="h-5 w-5" />
+                {cartCount > 0 && (
+                  <Badge className="absolute -top-2 -right-2 bg-purple-600 dark:bg-purple-700 h-5 w-5 flex items-center justify-center p-0 text-xs text-white">
+                    {cartCount}
+                  </Badge>
+                )}
+              </Button>
+            </Link>
+
+            {/* Notifications */}
+            {isSignedIn && (
+              <Link href="/notifications" className="relative">
+                <Button variant="ghost" size="icon">
+                  <Bell className="h-5 w-5" />
+                  {unreadNotifications > 0 && (
+                    <Badge className="absolute -top-2 -right-2 bg-red-600 dark:bg-red-700 h-5 w-5 flex items-center justify-center p-0 text-xs text-white">
+                      {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                    </Badge>
+                  )}
+                </Button>
+              </Link>
+            )}
+
             {/* Theme Toggle */}
             {mounted && (
               <button
@@ -120,47 +183,49 @@ export function Navbar() {
             )}
 
             {/* Mobile Menu */}
-            <Sheet>
-              <SheetTrigger asChild className="md:hidden">
-                <Button variant="ghost" size="icon">
-                  <Menu className="h-5 w-5" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent>
-                <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
-                <div className="flex flex-col gap-4 pt-8">
-                  <Link href="/" className="font-medium">
-                    Home
-                  </Link>
-                  {isSignedIn && (
-                    <Link href="/dashboard" className="font-medium">
-                      Dashboard
+            {mounted && (
+              <Sheet>
+                <SheetTrigger asChild className="md:hidden">
+                  <Button variant="ghost" size="icon">
+                    <Menu className="h-5 w-5" />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent>
+                  <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+                  <div className="flex flex-col gap-4 pt-8">
+                    <Link href="/" className="font-medium">
+                      Home
                     </Link>
-                  )}
-                  {!loadingRole && isAdmin && (
-                    <Link href="/admin" className="font-medium">
-                      Admin
-                    </Link>
-                  )}
-                  <div className="border-t pt-4">
-                    {isSignedIn ? (
-                      <Button onClick={handleSignOut} variant="outline" className="w-full">
-                        Sign Out
-                      </Button>
-                    ) : (
-                      <div className="flex flex-col gap-2">
-                        <Button asChild variant="outline">
-                          <Link href="/sign-in">Sign In</Link>
-                        </Button>
-                        <Button asChild>
-                          <Link href="/sign-up">Sign Up</Link>
-                        </Button>
-                      </div>
+                    {isSignedIn && (
+                      <Link href="/dashboard" className="font-medium">
+                        Dashboard
+                      </Link>
                     )}
+                    {!loadingRole && isAdmin && (
+                      <Link href="/admin" className="font-medium">
+                        Admin
+                      </Link>
+                    )}
+                    <div className="border-t pt-4">
+                      {isSignedIn ? (
+                        <Button onClick={handleSignOut} variant="outline" className="w-full">
+                          Sign Out
+                        </Button>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          <Button asChild variant="outline">
+                            <Link href="/sign-in">Sign In</Link>
+                          </Button>
+                          <Button asChild>
+                            <Link href="/sign-up">Sign Up</Link>
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </SheetContent>
-            </Sheet>
+                </SheetContent>
+              </Sheet>
+            )}
           </div>
         </div>
       </nav>

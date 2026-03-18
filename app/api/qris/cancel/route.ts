@@ -16,46 +16,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing txId' }, { status: 400 })
     }
 
-    // Get transaction
-    const transaction = await prisma.transaction.findUnique({
+    // Get order
+    const order = await prisma.order.findUnique({
       where: { txId },
     })
 
-    if (!transaction) {
-      return NextResponse.json({ error: 'Transaction not found' }, { status: 404 })
+    if (!order) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 })
     }
 
-    // Verify user owns this transaction
+    // Verify user owns this order
     const user = await prisma.user.findUnique({
       where: { clerkId: userId },
     })
 
-    if (!user || transaction.userId !== user.id) {
+    if (!user || order.userId !== user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Can only cancel pending transactions
-    if (transaction.status !== 'pending') {
+    // Can only cancel pending orders
+    if (order.status !== 'pending') {
       return NextResponse.json(
-        { error: 'Cannot cancel non-pending transaction' },
+        { error: 'Cannot cancel non-pending order' },
         { status: 400 }
       )
     }
 
-    // Update transaction status
-    const updatedTransaction = await prisma.transaction.update({
-      where: { id: transaction.id },
+    // Update order status
+    const updatedOrder = await prisma.order.update({
+      where: { id: order.id },
       data: {
         status: 'cancelled',
       },
     })
 
     return NextResponse.json({
-      txId: updatedTransaction.txId,
-      status: updatedTransaction.status,
+      txId: updatedOrder.txId,
+      status: updatedOrder.status,
     })
   } catch (error) {
-    console.error('[v0] Error cancelling transaction:', error)
+    console.error('[QRIS] Error cancelling order:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

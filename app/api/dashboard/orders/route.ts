@@ -19,15 +19,31 @@ export async function GET() {
       return NextResponse.json([])
     }
 
-    const orders = await prisma.transaction.findMany({
+    // Auto-expire pending orders that have passed expiration time
+    const now = new Date()
+    await prisma.order.updateMany({
+      where: {
+        userId: user.id,
+        status: 'pending',
+        expiredAt: { lt: now },
+      },
+      data: { status: 'expired' },
+    })
+
+    const orders = await prisma.order.findMany({
       where: {
         userId: user.id,
       },
       include: {
-        kelas: {
-          select: {
-            title: true,
-            slug: true,
+        items: {
+          include: {
+            product: {
+              select: {
+                name: true,
+                slug: true,
+                price: true,
+              },
+            },
           },
         },
       },
@@ -36,10 +52,11 @@ export async function GET() {
 
     return NextResponse.json(orders)
   } catch (error) {
-    console.error('[v0] Error fetching orders:', error)
+    console.error('[Dashboard] Error fetching orders:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
     )
   }
 }
+

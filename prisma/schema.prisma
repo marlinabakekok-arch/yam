@@ -11,7 +11,7 @@ datasource db {
 }
 
 model User {
-  id        String     @id @default(cuid())
+  id    String     @id @default(cuid())
   clerkId   String     @unique
   email     String     @unique
   name      String?
@@ -19,35 +19,44 @@ model User {
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
-  transactions Transaction[]
+  orders Order[]
+  notifications UserNotification[]
+  addresses Address[]
+  reviews Review[]
+  recentlyViewed RecentlyViewed[]
 
   @@map("users")
 }
 
-model Kelas {
+model Product {
   id          String   @id @default(cuid())
-  title       String
+  name        String
   slug        String   @unique
-  description String
-  price       Int // in cents (e.g., 50000 = Rp 500.00)
-  thumbnail   String?
-  groupLink   String?
+  description String   @db.Text
+  price       Int      // in cents (e.g., 50000 = Rp 500.00)
+  category    String   // "fashion" or "kalung"
+  images      String[] // array of image URLs
+  sizes       String[] // e.g., ["XS", "S", "M", "L", "XL"] or [product-specific sizes]
+  colors      String[] // e.g., ["Black", "White", "Red"]
+  stock       Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  transactions Transaction[]
+  orderItems OrderItem[]
+  reviews Review[]
+  recentlyViewed RecentlyViewed[]
 
-  @@map("kelas")
+  @@map("products")
 }
 
-model Transaction {
+model Order {
   id        String   @id @default(cuid())
-  txId      String   @unique // PayDigital transaction ID
+  txId      String   @unique // Payment gateway transaction ID
   userId    String
-  kelasId   String
-  amount    Int // price of kelas
-  total     Int // amount + fee
-  status    String   @default("pending") // pending, paid, expired, failed
+  addressId String?   // Shipping address
+  amount    Int      // subtotal
+  total     Int      // amount + fee
+  status    String   @default("pending") // pending, paid, expired, failed, cancelled
   payUrl    String?
   qrString  String?
   expiredAt DateTime?
@@ -55,8 +64,193 @@ model Transaction {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  kelas Kelas @relation(fields: [kelasId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  address Address? @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  items   OrderItem[]
 
-  @@map("transactions")
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  productId String
+  quantity  Int
+  price     Int      // price at time of purchase
+  size      String?
+  color     String?
+  createdAt DateTime @default(now())
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("order_items")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  title     String
+  message   String   @db.Text
+  type      String   @default("info") // "info", "promotion", "alert", "new_product"
+  image     String?  // image URL
+  link      String?  // link to product or page
+  createdAt DateTime @default(now())
+
+  users UserNotification[]
+
+  @@map("notifications")
+}
+
+model UserNotification {
+  id             String   @id @default(cuid())
+  userId         String
+  notificationId String
+  isRead         Boolean  @default(false)
+  readAt         DateTime?
+  createdAt      DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, notificationId])
+  @@map("user_notifications")
+}
+
+model Admin {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String   // hashed password
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("admins")
+}
+
+model Coupon {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  description String?
+  discountType String  // "percentage" or "fixed"
+  discountValue Int    // percentage (1-100) or fixed amount (in Rp)
+  maxUses     Int?     // null = unlimited
+  usedCount   Int      @default(0)
+  minPurchase Int      @default(0) // minimum purchase amount
+  isActive    Boolean  @default(true)
+  startDate   DateTime?
+  endDate     DateTime?
+  createdBy   String   // admin email who created this
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("coupons")
+}
+
+model FlashSale {
+  id          String   @id @default(cuid())
+  productId   String
+  title       String
+  discount    Int      // percentage discount (1-100)
+  startTime   DateTime
+  endTime     DateTime
+  isActive    Boolean  @default(true)
+  maxQuantity Int?     // null = unlimited
+  sold        Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("flash_sales")
+}
+
+model Settings {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String   @db.Text
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("settings")
+}
+
+model Address {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String   // e.g., "Home", "Office"
+  fullName  String
+  phone     String
+  address   String
+  city      String
+  province  String
+  postalCode String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@map("addresses")
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  rating    Int      // 1-5
+  title     String
+  comment   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@map("reviews")
+}
+
+model RecentlyViewed {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  viewedAt  DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([userId, productId])
+  @@map("recently_viewed")
+}
+
+model Event {
+  id        String   @id @default(cuid())
+  title     String
+  description String @db.Text
+  startDate DateTime
+  endDate   DateTime
+  location  String
+  image     String?  // image URL
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("events")
+}
+
+model Webhook {
+  id        String   @id @default(cuid())
+  url       String   // webhook endpoint URL
+  events    String[] // events to listen for (e.g., ["payment_completed", "order_created"])
+  secret    String   // secret key for signing webhook requests
+  isActive  Boolean  @default(true)
+  retryCount Int     @default(3) // max retry attempts
+  lastTriggeredAt DateTime?
+  successCount Int   @default(0)
+  failureCount Int   @default(0)
+  createdBy String   // admin email who created this
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("webhooks")
 }

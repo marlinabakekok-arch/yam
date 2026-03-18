@@ -20,8 +20,18 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get all transactions with user and class details
-    const transactions = await prisma.transaction.findMany({
+    // Auto-expire pending orders that have passed expiration time
+    const now = new Date()
+    await prisma.order.updateMany({
+      where: {
+        status: 'pending',
+        expiredAt: { lt: now },
+      },
+      data: { status: 'expired' },
+    })
+
+    // Get all orders with user and product details
+    const orders = await prisma.order.findMany({
       include: {
         user: {
           select: {
@@ -30,20 +40,36 @@ export async function GET() {
             name: true,
           },
         },
-        kelas: {
+        address: {
           select: {
             id: true,
-            title: true,
-            price: true,
+            name: true,
+            fullName: true,
+            phone: true,
+            address: true,
+            city: true,
+            province: true,
+            postalCode: true,
+          },
+        },
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                price: true,
+              },
+            },
           },
         },
       },
       orderBy: { createdAt: 'desc' },
     })
 
-    return NextResponse.json(transactions)
+    return NextResponse.json(orders)
   } catch (error) {
-    console.error('[Admin Transactions API Error]:', error)
+    console.error('[Admin Orders API Error]:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
