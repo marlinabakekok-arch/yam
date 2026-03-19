@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Spinner } from '@/components/ui/spinner'
 import { useToast } from '@/hooks/use-toast'
 import { Copy, Clock, CheckCircle, AlertCircle } from 'lucide-react'
+import { paymentPoller } from '@/lib/payment-poller'
 
 interface CheckoutPageProps {
   params: Promise<{ kelasId: string }>
@@ -36,6 +37,62 @@ export default function CheckoutPage({ params }: CheckoutPageProps) {
   const [statusLoading, setStatusLoading] = useState(false)
   const [cancelLoading, setCancelLoading] = useState(false)
 
+  // Listen for transaction updates
+  useEffect(() => {
+    const handleTransactionUpdate = (event: CustomEvent) => {
+      const { txId, status } = event.detail
+      if (transaction && transaction.txId === txId) {
+        setTransaction(prev => prev ? { ...prev, status } : null)
+
+        if (status === 'success') {
+          toast({
+            title: 'Payment Successful!',
+            description: 'You now have access to the class.',
+          })
+          // Redirect to class access page after a short delay
+          setTimeout(() => {
+            router.push(`/kelas/${transaction.kelasId}/access`)
+          }, 2000)
+        } else if (status === 'failed') {
+          toast({
+            title: 'Payment Failed',
+            description: 'Please try again or contact support.',
+            variant: 'destructive',
+          })
+        }
+      }
+    }
+
+    window.addEventListener('transaction-updated', handleTransactionUpdate as EventListener)
+
+    return () => {
+      window.removeEventListener('transaction-updated', handleTransactionUpdate as EventListener)
+    }
+  }, [transaction, toast, router])
+
+  // Periodic status check for UI updates
+  useEffect(() => {
+    if (!transaction?.txId || transaction.status !== 'pending') return
+
+    const checkStatus = async () => {
+      try {
+        const response = await fetch(`/api/transaction/${transaction.txId}`)
+        if (response.ok) {
+          const data = await response.json()
+          if (data.status !== transaction.status) {
+            setTransaction(prev => prev ? { ...prev, status: data.status } : null)
+          }
+        }
+      } catch (error) {
+        console.error('Error checking transaction status:', error)
+      }
+    }
+
+    // Check every 10 seconds for UI updates
+    const interval = setInterval(checkStatus, 10000)
+    return () => clearInterval(interval)
+  }, [transaction])
+
   useEffect(() => {
     const unwrapParams = async () => {
       const { kelasId } = await params
@@ -59,6 +116,11 @@ export default function CheckoutPage({ params }: CheckoutPageProps) {
           }
 
           setTransaction(data)
+
+          // Start polling for payment status
+          if (data.txId) {
+            paymentPoller.startPolling(data.txId)
+          }
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Unknown error'
           console.error('[v0] Error creating transaction:', errorMessage)
@@ -324,27 +386,21 @@ export default function CheckoutPage({ params }: CheckoutPageProps) {
                     </p>
                   </div>
 
-                  {/* Check Status Button */}
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={handleCheckStatus}
-                      disabled={statusLoading}
-                      className="flex-1 bg-indigo-600 hover:bg-indigo-700"
-                    >
-                      {statusLoading ? (
-                        <>
-                          <Spinner className="mr-2 h-4 w-4" />
-                          Checking...
-                        </>
-                      ) : (
-                        'Check Payment Status'
-                      )}
-                    </Button>
+                  {/* Auto Status Check Info */}
+                  <div className="flex items-center justify-center gap-2 rounded-lg bg-blue-50 p-4 dark:bg-blue-950">
+                    <Clock className="h-5 w-5 text-blue-600 animate-pulse" />
+                    <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                      🔄 Auto-checking payment status every 30 seconds...
+                    </span>
+                  </div>
+
+                  {/* Cancel Button */}
+                  <div className="flex justify-center">
                     <Button
                       onClick={handleCancel}
                       disabled={cancelLoading}
                       variant="outline"
-                      className="flex-1"
+                      className="w-full max-w-xs"
                     >
                       {cancelLoading ? (
                         <>
@@ -352,7 +408,7 @@ export default function CheckoutPage({ params }: CheckoutPageProps) {
                           Cancelling...
                         </>
                       ) : (
-                        'Cancel'
+                        'Cancel Payment'
                       )}
                     </Button>
                   </div>
@@ -370,8 +426,12 @@ export default function CheckoutPage({ params }: CheckoutPageProps) {
                     <li>Look for the "QRIS" or "Scan QR" option</li>
                     <li>Point your camera at the QR code above</li>
                     <li>Review the transaction details and confirm</li>
-                    <li>Once paid, click "Check Payment Status" above</li>
+                    <li>Payment will be automatically detected (no need to click anything!)</li>
                   </ol>
+                  <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
+                    💡 The system automatically checks payment status every 30 seconds.
+                    You'll be redirected to class access once payment is confirmed.
+                  </p>
                 </CardContent>
               </Card>
             </>

@@ -16,26 +16,38 @@ export async function GET(
 
     const { txId } = await params
 
-    // Get transaction
-    const transaction = await prisma.transaction.findUnique({
+    // Get order
+    const order = await prisma.order.findUnique({
       where: { txId },
+      include: {
+        items: {
+          include: {
+            product: {
+              select: {
+                name: true,
+                category: true,
+              },
+            },
+          },
+        },
+      },
     })
 
-    if (!transaction) {
-      return NextResponse.json({ error: 'Transaction not found' }, { status: 404 })
+    if (!order) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 })
     }
 
-    // Verify user owns this transaction
+    // Verify user owns this order
     const user = await prisma.user.findUnique({
       where: { clerkId: userId },
     })
 
-    if (!user || transaction.userId !== user.id) {
+    if (!user || order.userId !== user.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Check payment status with PayDigital
-    let paymentStatus = transaction.status
+    let paymentStatus = order.status
     try {
       const paydigitalResponse = await fetch(
         `https://api.paydigital.id/v1/qris/${txId}/status`,
@@ -50,31 +62,42 @@ export async function GET(
         const paydigitalData = await paydigitalResponse.json()
         paymentStatus = paydigitalData.status?.toLowerCase() || 'pending'
 
-        // Update transaction if payment successful
+        // Update order if payment successful
         if (paymentStatus === 'success' || paymentStatus === 'paid') {
-          await prisma.transaction.update({
-            where: { id: transaction.id },
+          await prisma.order.update({
+            where: { id: order.id },
             data: {
-              status: 'success',
+              status: 'paid',
               paidAt: new Date(),
             },
           })
         }
       }
     } catch (error) {
-      console.error('[v0] PayDigital status check error:', error)
+      console.error('[QRIS] PayDigital status check error:', error)
       // Return current status from database if API fails
     }
 
     return NextResponse.json({
-      txId: transaction.txId,
+      txId: order.txId,
       status: paymentStatus,
-      amount: transaction.amount,
-      expiredAt: transaction.expiredAt,
-      paidAt: transaction.paidAt,
+      amount: order.amount,
+      total: order.amount,
+      qrString: order.qrString,
+      payUrl: order.payUrl,
+      expiredAt: order.expiredAt,
+      paidAt: order.paidAt,
+      orderItems: order.items.map((item) => ({
+        quantity: item.quantity,
+        price: item.price,
+        Product: {
+          name: item.product.name,
+          category: item.product.category,
+        },
+      })),
     })
   } catch (error) {
-    console.error('[v0] Error checking transaction status:', error)
+    console.error('[QRIS] Error checking order status:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

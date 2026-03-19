@@ -4,6 +4,13 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
+interface OrderItem {
+  productId: string
+  quantity: number
+  size?: string
+  color?: string
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await auth()
@@ -11,21 +18,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { kelasId } = await request.json()
-    if (!kelasId) {
-      return NextResponse.json({ error: 'Missing kelasId' }, { status: 400 })
+    const body = await request.json()
+    const { items } = body // items: [{productId, quantity, size, color}, ...]
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ error: 'Missing items' }, { status: 400 })
     }
 
-    // Get the class
-    const kelas = await prisma.kelas.findUnique({
-      where: { id: kelasId },
-    })
-
-    if (!kelas) {
-      return NextResponse.json({ error: 'Class not found' }, { status: 404 })
-    }
-
-    // Get or create user in database with placeholder email
+    // Get or create user in database
     const user = await prisma.user.upsert({
       where: { clerkId: userId },
       update: {},
@@ -35,60 +35,135 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Check if already enrolled
-    const existingTransaction = await prisma.transaction.findFirst({
-      where: {
-        userId: user.id,
-        kelasId: kelas.id,
-        status: 'success',
-      },
-    })
+    // Validate products and calculate total
+    let totalAmount = 0
+    const productDetails = []
 
-    if (existingTransaction) {
-      return NextResponse.json(
-        { error: 'Already enrolled in this class' },
-        { status: 400 }
-      )
+    for (const item of items) {
+      const product = await prisma.product.findUnique({
+        where: { id: item.productId },
+      })
+
+      if (!product) {
+        return NextResponse.json(
+          { error: `Product not found: ${item.productId}` },
+          { status: 404 }
+        )
+      }
+
+      if (product.stock < item.quantity) {
+        return NextResponse.json(
+          { error: `Insufficient stock for ${product.name}` },
+          { status: 400 }
+        )
+      }
+
+      totalAmount += product.price * item.quantity
+      productDetails.push({
+        name: product.name,
+        quantity: item.quantity,
+        price: product.price,
+      })
     }
 
-    // Create transaction ID
+    // Create order ID
     const txId = `TX${Date.now()}${Math.random().toString(36).substr(2, 9)}`
 
-    // Generate QR code URL using QR code service
-    const qrData = JSON.stringify({ txId, kelas: kelas.title, amount: kelas.price })
-    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrData)}`
+    // Create QRIS via PayDigital API
+    let qrString = ''
+    let payUrl = ''
+    let qrisData = null
 
-    // Create transaction in database
-    const transaction = await prisma.transaction.create({
+    try {
+      const paydigitalResponse = await fetch(
+        'https://api.paydigital.id/v1/qris/create',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${process.env.PAYDIGITAL_API_KEY}`,
+          },
+          body: JSON.stringify({
+            externalId: txId,
+            amount: totalAmount,
+            description: `Fashion Store Order - ${productDetails.map(p => p.name).join(', ')}`,
+            expiredTime: 600, // 10 minutes
+            buyer: {
+              name: 'Customer',
+              email: 'customer@fashionstore.local',
+            },
+          }),
+        }
+      )
+
+      if (paydigitalResponse.ok) {
+        qrisData = await paydigitalResponse.json()
+        qrString = qrisData.qrImage || qrisData.qrString || ''
+        payUrl = qrisData.paymentLink || qrisData.payUrl || ''
+      } else {
+        console.error('[QRIS] PayDigital API error:', await paydigitalResponse.text())
+        // Fallback to local QR generation
+        const qrData = JSON.stringify({ 
+          txId, 
+          items: productDetails, 
+          amount: totalAmount 
+        })
+        qrString = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrData)}`
+      }
+    } catch (error) {
+      console.error('[QRIS] PayDigital API call error:', error)
+      // Fallback to local QR generation
+      const qrData = JSON.stringify({ 
+        txId, 
+        items: productDetails, 
+        amount: totalAmount 
+      })
+      qrString = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrData)}`
+    }
+
+    // Create order in database
+    const order = await prisma.order.create({
       data: {
         txId,
         userId: user.id,
-        kelasId: kelas.id,
-        amount: kelas.price,
-        total: kelas.price,
+        amount: totalAmount,
+        total: totalAmount,
         status: 'pending',
-        qrString: qrCodeUrl,
-        payUrl: null,
+        qrString: qrString,
+        payUrl: payUrl,
         expiredAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes from now
+        items: {
+          create: items.map((item: OrderItem) => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            size: item.size,
+            color: item.color,
+            price: items.find((i: OrderItem) => i.productId === item.productId)?.quantity || 0,
+          })),
+        },
+      },
+      include: {
+        items: true,
       },
     })
 
     return NextResponse.json({
-      id: transaction.id,
-      txId: transaction.txId,
-      amount: transaction.amount,
-      status: transaction.status,
-      qrString: transaction.qrString,
-      payUrl: transaction.payUrl,
-      expiredAt: transaction.expiredAt,
-      paidAt: transaction.paidAt,
-      kelasTitle: kelas.title,
+      id: order.id,
+      txId: order.txId,
+      amount: order.amount,
+      status: order.status,
+      qrString: order.qrString,
+      payUrl: order.payUrl,
+      expiredAt: order.expiredAt,
+      paidAt: order.paidAt,
+      items: productDetails,
     })
   } catch (error) {
-    console.error('[v0] Error creating QRIS transaction:', error)
+    console.error('[QRIS] Error creating order:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
     )
   }
 }
+
